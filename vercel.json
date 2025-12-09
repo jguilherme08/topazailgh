@@ -2,6 +2,9 @@
   "buildCommand": "npm run build",
   "outputDirectory": ".next",
   "framework": "nextjs",
+  "env": {
+    "REPLICATE_API_TOKEN": "@replicate_api_token"
+  },
   "functions": {
     "app/api/**/*.ts": {
       "maxDuration": 300
