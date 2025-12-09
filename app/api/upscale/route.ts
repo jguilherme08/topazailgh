@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
     try {
       const esrganOutput = await Promise.race([
         replicate.run(
-          'nightmareai/real-esrgan:42fed498d75f109e402ca388e19e19e27566plane02d3d6b6da7c33ec11b03d84a',
+          'nightmareai/real-esrgan:f121d640bd286e1fdc67f9799164291fe0739df7adf4634a3a6c547f4f2fcf7a',
           {
             input: {
               image: dataUrl,
