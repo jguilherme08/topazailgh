@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import Replicate from 'replicate';
 
 // Timeout para processar imagens (em ms)
-const PROCESSING_TIMEOUT = 600000; // 10 minutos
+const PROCESSING_TIMEOUT = 290000; // ~4.8 minutos (deixa margem para o limite do Vercel)
 
 export async function POST(request: NextRequest) {
   try {
@@ -88,11 +88,11 @@ export async function POST(request: NextRequest) {
 
         const gfpganOutput = await Promise.race([
           replicate.run(
-            'tencentarc/gfpgan:0fbacf7afc6c144e5be9767cff079747f7f2ubef5',
+            'tencentarc/gfpgan:0fbacf7afc6c144e5be9767cff079fbef5',
             {
               input: {
                 img: upscaledImageUrl,
-                version: 1.4,
+                version: '1.4',
                 scale: 2,
               },
             }
