@@ -1,11 +1,13 @@
 {
   "buildCommand": "npm run build",
-  "outputDirectory": ".next/static",
+  "outputDirectory": ".next",
   "framework": "nextjs",
+  "env": [
+    "REPLICATE_API_TOKEN"
+  ],
   "functions": {
-    "api/enhance.py": {
-      "runtime": "python3.11",
-      "maxDuration": 15
+    "app/api/**/*.ts": {
+      "maxDuration": 60
     }
   }
 }
