@@ -74,8 +74,6 @@ export default function UpscalingApp() {
   const [scale, setScale] = useState(2);
   const [sharpnessAmount, setSharpnessAmount] = useState(1.5);
   const [sharpnessRadius, setSharpnessRadius] = useState(0.7);
-  const [edgeThreshold] = useState(50);
-  const [contrastBoost] = useState(1.2);
   const [denoise, setDenoise] = useState(true);
   const [denoiseMethod, setDenoiseMethod] = useState<'bilateral' | 'nlm'>('bilateral');
   const [denoiseStrength, setDenoiseStrength] = useState(1);
@@ -147,20 +145,10 @@ export default function UpscalingApp() {
     try {
       const formData = new FormData();
       formData.append('file', targetItem.file);
-      formData.append('method', method);
       formData.append('scale', scale.toString());
-      formData.append('sharpnessAmount', sharpnessAmount.toString());
-      formData.append('sharpnessRadius', sharpnessRadius.toString());
-      formData.append('edgeThreshold', edgeThreshold.toString());
-      formData.append('contrastBoost', contrastBoost.toString());
-      formData.append('denoise', denoise.toString());
-      formData.append('denoiseMethod', denoiseMethod);
-      formData.append('denoiseStrength', denoiseStrength.toString());
-      formData.append('enableCLAHE', enableCLAHE.toString());
-      formData.append('claheClipLimit', claheClipLimit.toString());
-      formData.append('enableMultiPass', enableMultiPass.toString());
+      formData.append('faceRestore', 'false');
 
-      const res = await fetch('/api/enhance', {
+      const res = await fetch('/api/upscale', {
         method: 'POST',
         body: formData,
       });
@@ -176,7 +164,9 @@ export default function UpscalingApp() {
           ));
         }
       } else {
-        alert('Failed to upscale image');
+        const errorData = await res.json().catch(() => ({}));
+        console.error('API error:', errorData);
+        alert(`Failed to upscale image: ${errorData.error || 'Unknown error'}`);
         if (item) {
           setImages((prev: ProcessingItem[]) => prev.map((img: ProcessingItem) => 
             img.id === item.id ? { ...img, status: 'error' as const } : img
@@ -185,7 +175,7 @@ export default function UpscalingApp() {
       }
     } catch (error) {
       console.error('Error:', error);
-      alert('Error processing image');
+      alert(`Error processing image: ${error instanceof Error ? error.message : 'Unknown error'}`);
       if (item) {
         setImages((prev: ProcessingItem[]) => prev.map((img: ProcessingItem) => 
           img.id === item.id ? { ...img, status: 'error' as const } : img
