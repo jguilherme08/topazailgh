@@ -1,17 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Replicate from 'replicate';
 
-// Timeout para processar imagens (em ms)
-const PROCESSING_TIMEOUT = 290000; // ~4.8 minutos (deixa margem para o limite do Vercel)
+const PROCESSING_TIMEOUT = 290000; // ~4.8 minutos
 
 export async function POST(request: NextRequest) {
+  let errorContext = 'initialization';
+
   try {
     // Validar token
+    errorContext = 'token-validation';
     const token = process.env.REPLICATE_API_TOKEN;
     if (!token) {
       console.error('REPLICATE_API_TOKEN not configured');
       return NextResponse.json(
-        { error: 'Replicate API token not configured. Set REPLICATE_API_TOKEN environment variable.' },
+        { error: 'Replicate API token not configured' },
         { status: 500 }
       );
     }
@@ -20,103 +22,137 @@ export async function POST(request: NextRequest) {
       auth: token,
     });
 
+    // Parse FormData
+    errorContext = 'form-parsing';
     const formData = await request.formData();
     const file = formData.get('file') as File;
-    const scale = parseInt(formData.get('scale') as string) || 2;
-    const faceRestore = formData.get('faceRestore') === 'true' || false;
+    const scale = Math.min(Math.max(parseInt(formData.get('scale') as string) || 2, 1), 4);
+    const faceRestore = (formData.get('faceRestore') as string) === 'true';
 
+    console.log(`[Upscale] Received: file=${file?.name}, size=${file?.size}, scale=${scale}, faceRestore=${faceRestore}`);
+
+    // Validações
+    errorContext = 'file-validation';
     if (!file) {
-      return NextResponse.json(
-        { error: 'No file provided' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'No file provided' }, { status: 400 });
     }
 
-    // Validar tamanho da imagem (máx 5MB)
     if (file.size > 5 * 1024 * 1024) {
-      return NextResponse.json(
-        { error: 'File size exceeds 5MB limit' },
-        { status: 413 }
-      );
+      return NextResponse.json({ error: 'File exceeds 5MB limit' }, { status: 413 });
     }
 
-    // Converter arquivo para base64
+    // Converter para URL (usando blob URL temporário ou carregando)
+    errorContext = 'image-conversion';
     const buffer = await file.arrayBuffer();
     const base64 = Buffer.from(buffer).toString('base64');
-    const dataUrl = `data:${file.type};base64,${base64}`;
+    const dataUrl = `data:${file.type || 'image/jpeg'};base64,${base64}`;
 
-    console.log(`Processing image with Replicate - Scale: ${scale}, FaceRestore: ${faceRestore}`);
+    console.log(`[Upscale] Converted to base64: ${base64.length} bytes`);
 
-    // Chamar Real-ESRGAN para upscaling
-    let upscaledImageUrl = null;
+    // Chamar Real-ESRGAN
+    errorContext = 'real-esrgan-call';
+    console.log(`[Upscale] Starting Real-ESRGAN with scale=${scale}`);
+
+    let upscaledImageUrl: string | null = null;
 
     try {
-      const esrganOutput = await Promise.race([
-        replicate.run(
-          'nightmareai/real-esrgan:f121d640bd286e1fdc67f9799164291fe0739df7adf4634a3a6c547f4f2fcf7a',
-          {
-            input: {
-              image: dataUrl,
-              scale: scale,
-              face_enhance: false,
-            },
-          }
-        ),
-        new Promise((_, reject) =>
+      const esrganResult = await Promise.race([
+        (async () => {
+          console.log(`[Upscale] Calling replicate.run for Real-ESRGAN...`);
+          const result = await replicate.run(
+            'nightmareai/real-esrgan:f121d640bd286e1fdc67f9799164291fe0739df7adf4634a3a6c547f4f2fcf7a',
+            {
+              input: {
+                image: dataUrl,
+                scale: scale,
+                face_enhance: false,
+              },
+            }
+          );
+          console.log(`[Upscale] Real-ESRGAN result type:`, typeof result, Array.isArray(result) ? 'array' : 'value');
+          console.log(`[Upscale] Real-ESRGAN result:`, result);
+          return result;
+        })(),
+        new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error('Real-ESRGAN timeout')), PROCESSING_TIMEOUT)
         ),
       ]);
 
-      if (!esrganOutput) {
-        throw new Error('Real-ESRGAN returned empty result');
+      // Extrair URL do resultado (pode ser string ou array)
+      if (Array.isArray(esrganResult)) {
+        upscaledImageUrl = esrganResult[0] as string;
+      } else if (typeof esrganResult === 'string') {
+        upscaledImageUrl = esrganResult;
+      } else if (esrganResult && typeof esrganResult === 'object' && 'output' in esrganResult) {
+        upscaledImageUrl = (esrganResult as any).output;
       }
 
-      upscaledImageUrl = esrganOutput as string;
-      console.log('Real-ESRGAN completed successfully:', upscaledImageUrl);
-    } catch (esrganError) {
-      const errorMsg = esrganError instanceof Error ? esrganError.message : String(esrganError);
-      console.error('Real-ESRGAN error:', errorMsg, esrganError);
-      throw new Error(`Real-ESRGAN processing failed: ${errorMsg}`);
+      if (!upscaledImageUrl) {
+        throw new Error(`Invalid Real-ESRGAN result: ${JSON.stringify(esrganResult)}`);
+      }
+
+      console.log(`[Upscale] Real-ESRGAN success: ${upscaledImageUrl}`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[Upscale] Real-ESRGAN failed: ${msg}`, err);
+      throw new Error(`Real-ESRGAN: ${msg}`);
     }
 
-    // Opcional: aplicar restauração facial se solicitado
+    // Face Restoration (opcional)
     let finalImageUrl = upscaledImageUrl;
 
-    if (faceRestore) {
+    if (faceRestore && upscaledImageUrl) {
+      errorContext = 'gfpgan-call';
       try {
-        console.log('Applying face restoration...');
+        console.log(`[Upscale] Starting GFPGAN...`);
 
-        const gfpganOutput = await Promise.race([
-          replicate.run(
-            'tencentarc/gfpgan:0fbacf7afc6c144e5be9767cff079fbef5',
-            {
-              input: {
-                img: upscaledImageUrl,
-                version: '1.4',
-                scale: 2,
-              },
-            }
-          ),
-          new Promise((_, reject) =>
+        const gfpganResult = await Promise.race([
+          (async () => {
+            const result = await replicate.run(
+              'tencentarc/gfpgan:0fbacf7afc6c144e5be9767cff079fbef5',
+              {
+                input: {
+                  img: upscaledImageUrl,
+                  version: '1.4',
+                  scale: 2,
+                },
+              }
+            );
+            console.log(`[Upscale] GFPGAN result:`, result);
+            return result;
+          })(),
+          new Promise<never>((_, reject) =>
             setTimeout(() => reject(new Error('GFPGAN timeout')), PROCESSING_TIMEOUT)
           ),
         ]);
 
-        finalImageUrl = gfpganOutput as string;
-        console.log('GFPGAN face restoration completed');
-      } catch (gfpganError) {
-        console.warn('Face restoration failed, returning upscaled image:', gfpganError);
-        // Não fazer falha se face restore não funcionar - retornar upscaled image mesmo assim
+        if (Array.isArray(gfpganResult)) {
+          finalImageUrl = gfpganResult[0] as string;
+        } else if (typeof gfpganResult === 'string') {
+          finalImageUrl = gfpganResult;
+        }
+
+        console.log(`[Upscale] GFPGAN success`);
+      } catch (err) {
+        console.warn(`[Upscale] GFPGAN failed (continuing with upscaled image):`, err);
       }
     }
 
-    // Baixar a imagem final
+    // Download final image
+    errorContext = 'image-download';
+    console.log(`[Upscale] Downloading final image from: ${finalImageUrl}`);
+
     const response = await fetch(finalImageUrl);
     if (!response.ok) {
-      throw new Error(`Failed to download processed image: ${response.statusText}`);
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
 
     const imageBuffer = await response.arrayBuffer();
+    if (imageBuffer.byteLength === 0) {
+      throw new Error('Downloaded image is empty');
+    }
+
+    console.log(`[Upscale] Success! Image size: ${imageBuffer.byteLength} bytes`);
 
     return new NextResponse(imageBuffer, {
       headers: {
@@ -126,13 +162,14 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('Upscaling error:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error(`[Upscale] Error in ${errorContext}: ${errorMsg}`, error);
 
     return NextResponse.json(
       {
         error: 'Failed to process image',
-        details: errorMessage,
+        details: errorMsg,
+        context: errorContext,
       },
       { status: 500 }
     );
