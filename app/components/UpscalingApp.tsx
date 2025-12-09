@@ -148,6 +148,8 @@ export default function UpscalingApp() {
       formData.append('scale', scale.toString());
       formData.append('faceRestore', 'false');
 
+      console.log(`[Frontend] Uploading: ${targetItem.file.name} (${targetItem.file.size}B) with scale ${scale}x`);
+
       const res = await fetch('/api/upscale', {
         method: 'POST',
         body: formData,
@@ -155,6 +157,8 @@ export default function UpscalingApp() {
 
       if (res.ok) {
         const imageBlob = await res.blob();
+        console.log(`[Frontend] Received upscaled image: ${imageBlob.size}B`);
+        
         const url = URL.createObjectURL(imageBlob);
         setUpscaledImage(url);
         
@@ -164,9 +168,19 @@ export default function UpscalingApp() {
           ));
         }
       } else {
-        const errorData = await res.json().catch(() => ({}));
-        console.error('API error:', errorData);
-        alert(`Failed to upscale image: ${errorData.error || 'Unknown error'}`);
+        let errorMsg = 'Unknown error';
+        try {
+          const errorData = await res.json();
+          errorMsg = errorData.details || errorData.error || errorMsg;
+          console.error('[Frontend] API error response:', errorData);
+        } catch (parseErr) {
+          const text = await res.text();
+          console.error('[Frontend] Could not parse error response:', text);
+          errorMsg = `HTTP ${res.status}: ${res.statusText}`;
+        }
+        
+        alert(`Failed to upscale image:\n\n${errorMsg}\n\nPlease check:\n1. Internet connection\n2. Image format (JPG, PNG)\n3. Server logs for more details`);
+        
         if (item) {
           setImages((prev: ProcessingItem[]) => prev.map((img: ProcessingItem) => 
             img.id === item.id ? { ...img, status: 'error' as const } : img
@@ -174,8 +188,10 @@ export default function UpscalingApp() {
         }
       }
     } catch (error) {
-      console.error('Error:', error);
-      alert(`Error processing image: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.error('[Frontend] Network error:', error);
+      alert(`Error processing image:\n\n${errorMsg}\n\nMake sure the server is running on http://localhost:3000`);
+      
       if (item) {
         setImages((prev: ProcessingItem[]) => prev.map((img: ProcessingItem) => 
           img.id === item.id ? { ...img, status: 'error' as const } : img
