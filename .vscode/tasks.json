@@ -1,0 +1,35 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Build Next.js",
+			"type": "shell",
+			"command": "npm run build"
+		},
+		{
+			"label": "Build Next.js",
+			"type": "shell",
+			"command": "npm run build"
+		},
+		{
+			"label": "Build Next.js",
+			"type": "shell",
+			"command": "npm run build"
+		},
+		{
+			"label": "npm install (once)",
+			"type": "shell",
+			"command": "npm install"
+		},
+		{
+			"label": "Install Node 20.18.0",
+			"type": "shell",
+			"command": "nvm install 20.18.0"
+		},
+		{
+			"label": "Clean Install Dependencies",
+			"type": "shell",
+			"command": "npm install --prefer-offline --no-audit"
+		}
+	]
+}
