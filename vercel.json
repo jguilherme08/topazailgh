@@ -1,5 +1,11 @@
 {
   "buildCommand": "npm run build",
   "outputDirectory": ".next/static",
-  "framework": "nextjs"
+  "framework": "nextjs",
+  "functions": {
+    "api/enhance.py": {
+      "runtime": "python3.11",
+      "maxDuration": 15
+    }
+  }
 }

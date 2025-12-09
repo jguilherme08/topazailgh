@@ -160,7 +160,7 @@ export default function UpscalingApp() {
       formData.append('claheClipLimit', claheClipLimit.toString());
       formData.append('enableMultiPass', enableMultiPass.toString());
 
-      const res = await fetch('/api/upscale', {
+      const res = await fetch('/api/enhance', {
         method: 'POST',
         body: formData,
       });
