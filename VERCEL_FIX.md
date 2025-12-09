@@ -107,7 +107,7 @@ Na página do projeto → Settings → Environment Variables, adicionar:
 
 ```
 Name: REPLICATE_API_TOKEN
-Value: r8_CkKXq1PRpiS4nYN9VJ9lBIlzT8oeR1P0i9SX4
+Value: [seu_token_aqui]
 Environments: Production, Preview, Development
 ```
 
