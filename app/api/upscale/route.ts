@@ -1,22 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Replicate from 'replicate';
 
-const replicate = new Replicate({
-  auth: process.env.REPLICATE_API_TOKEN,
-});
-
 // Timeout para processar imagens (em ms)
-const PROCESSING_TIMEOUT = 60000; // 60 segundos
+const PROCESSING_TIMEOUT = 600000; // 10 minutos
 
 export async function POST(request: NextRequest) {
   try {
     // Validar token
-    if (!process.env.REPLICATE_API_TOKEN) {
+    const token = process.env.REPLICATE_API_TOKEN;
+    if (!token) {
+      console.error('REPLICATE_API_TOKEN not configured');
       return NextResponse.json(
         { error: 'Replicate API token not configured. Set REPLICATE_API_TOKEN environment variable.' },
         { status: 500 }
       );
     }
+
+    const replicate = new Replicate({
+      auth: token,
+    });
 
     const formData = await request.formData();
     const file = formData.get('file') as File;
@@ -65,11 +67,16 @@ export async function POST(request: NextRequest) {
         ),
       ]);
 
+      if (!esrganOutput) {
+        throw new Error('Real-ESRGAN returned empty result');
+      }
+
       upscaledImageUrl = esrganOutput as string;
-      console.log('Real-ESRGAN completed successfully');
+      console.log('Real-ESRGAN completed successfully:', upscaledImageUrl);
     } catch (esrganError) {
-      console.error('Real-ESRGAN error:', esrganError);
-      throw new Error(`Real-ESRGAN processing failed: ${(esrganError as Error).message}`);
+      const errorMsg = esrganError instanceof Error ? esrganError.message : String(esrganError);
+      console.error('Real-ESRGAN error:', errorMsg, esrganError);
+      throw new Error(`Real-ESRGAN processing failed: ${errorMsg}`);
     }
 
     // Opcional: aplicar restauração facial se solicitado
